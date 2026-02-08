@@ -270,13 +270,6 @@
 
         <div id="error-message" class="error" style="display: none;"></div>
         <div id="info-message" class="info" style="display: none;"></div>
-        
-        <div id="signin-section" style="display: none; text-align: center; margin-bottom: 20px; padding: 20px; background: #fff3cd; border: 2px solid #ffc107; border-radius: 10px;">
-            <p style="margin-bottom: 15px; color: #856404; font-weight: 600;">⚠️ You need to sign in to use AI features</p>
-            <button id="signin-button" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; border: none; border-radius: 8px; font-size: 1em; cursor: pointer; font-weight: 600;">
-                🔐 Sign In to Puter
-            </button>
-        </div>
 
         <div class="status idle" id="status">Initializing...</div>
 
@@ -345,8 +338,6 @@
                 this.pitchValue = document.getElementById('pitch-value');
                 this.errorMessage = document.getElementById('error-message');
                 this.infoMessage = document.getElementById('info-message');
-                this.signinSection = document.getElementById('signin-section');
-                this.signinButton = document.getElementById('signin-button');
                 
                 this.init();
             }
@@ -404,7 +395,6 @@
                 this.micButton.addEventListener('click', () => this.toggleListening());
                 this.stopButton.addEventListener('click', () => this.stopListening());
                 this.clearButton.addEventListener('click', () => this.clearConversation());
-                this.signinButton.addEventListener('click', () => this.handleSignIn());
                 this.voiceSelect.addEventListener('change', (e) => {
                     this.selectedVoice = this.voices[e.target.value];
                 });
@@ -421,80 +411,22 @@
             
             async initializePuter() {
                 try {
-                    this.showInfo('Checking authentication...');
+                    this.showInfo('Initializing AI...');
                     console.log('Puter object available:', typeof puter !== 'undefined');
                     
-                    // Check if user is signed in
-                    const isSignedIn = await puter.auth.isSignedIn();
-                    console.log('User signed in:', isSignedIn);
+                    // Puter.js auto-initializes, no need for explicit setup
+                    // Just mark as ready
+                    this.chatInstance = true;
                     
-                    if (!isSignedIn) {
-                        console.log('User not signed in, showing sign-in button');
-                        this.signinSection.style.display = 'block';
-                        this.showError('Please sign in to Puter to use the AI features.');
-                        return;
-                    }
+                    // Enable the mic button
+                    this.micButton.disabled = false;
                     
-                    this.showInfo('Initializing AI...');
-                    
-                    // Try different model names that Puter might support
-                    const modelNames = [
-                        'claude-haiku',
-                        'haiku',
-                        'claude-3-5-haiku-20241022',
-                        'gpt-4o-mini'
-                    ];
-                    
-                    let lastError = null;
-                    
-                    for (const modelName of modelNames) {
-                        try {
-                            console.log(`Trying model: ${modelName}`);
-                            this.chatInstance = await puter.ai.chat(modelName);
-                            
-                            // Enable the mic button now that AI is ready
-                            this.micButton.disabled = false;
-                            
-                            this.showInfo(`Voice Assistant ready! Using ${modelName}. Click "Start Listening" to begin.`);
-                            console.log(`Puter initialized successfully with model: ${modelName}`);
-                            return; // Success!
-                        } catch (error) {
-                            console.log(`Model ${modelName} failed:`, error.message);
-                            lastError = error;
-                            continue; // Try next model
-                        }
-                    }
-                    
-                    // If we get here, all models failed
-                    throw lastError || new Error('All models failed to initialize');
+                    this.showInfo('Voice Assistant ready! Click "Start Listening" to begin.');
+                    console.log('Puter initialized successfully');
                     
                 } catch (error) {
                     console.error('Puter initialization error:', error);
-                    console.error('Error details:', JSON.stringify(error, null, 2));
-                    
-                    // Show sign-in button
-                    this.signinSection.style.display = 'block';
-                    
-                    // Provide helpful error message
-                    if (error.message && error.message.includes('401')) {
-                        this.showError('Authentication required. Please sign in to Puter using the button above.');
-                    } else {
-                        this.showError('Failed to initialize AI: ' + error.message + '. Try signing in with the button above.');
-                    }
-                }
-            }
-            
-            async handleSignIn() {
-                try {
-                    this.showInfo('Opening sign-in...');
-                    await puter.auth.signIn();
-                    
-                    // After sign-in, try to initialize again
-                    this.signinSection.style.display = 'none';
-                    await this.initializePuter();
-                } catch (error) {
-                    console.error('Sign-in error:', error);
-                    this.showError('Sign-in failed: ' + error.message);
+                    this.showError('Failed to initialize: ' + error.message);
                 }
             }
             
@@ -556,11 +488,25 @@
                         throw new Error('AI not initialized. Please refresh the page.');
                     }
                     
-                    // Get AI response using Puter chat instance
-                    const response = await this.chatInstance.say(text);
+                    // Call Puter AI - simple and direct like the working example
+                    const response = await puter.ai.chat(text);
                     
-                    this.addMessage('assistant', response);
-                    this.speak(response);
+                    // Handle different response formats
+                    let aiMessage;
+                    if (typeof response === 'string') {
+                        aiMessage = response;
+                    } else if (response.message) {
+                        aiMessage = response.message.content || response.message;
+                    } else if (response.content) {
+                        aiMessage = response.content;
+                    } else if (response.text) {
+                        aiMessage = response.text;
+                    } else {
+                        aiMessage = JSON.stringify(response);
+                    }
+                    
+                    this.addMessage('assistant', aiMessage);
+                    this.speak(aiMessage);
                     
                 } catch (error) {
                     console.error('AI Error:', error);
@@ -619,28 +565,7 @@
                 this.conversationHistory = [];
                 this.synthesis.cancel();
                 this.updateStatus('idle', 'Ready to listen');
-                
-                // Reset chat instance to clear conversation context
-                try {
-                    if (typeof puter !== 'undefined' && this.chatInstance) {
-                        // Try to recreate with the same model
-                        const modelNames = ['claude-haiku', 'haiku', 'claude-3-5-haiku-20241022', 'gpt-4o-mini'];
-                        
-                        for (const modelName of modelNames) {
-                            try {
-                                this.chatInstance = await puter.ai.chat(modelName);
-                                this.showInfo('Conversation cleared');
-                                return;
-                            } catch (error) {
-                                continue;
-                            }
-                        }
-                    }
-                    this.showInfo('Conversation cleared');
-                } catch (error) {
-                    console.error('Error resetting chat:', error);
-                    this.showInfo('Conversation cleared (chat reset failed)');
-                }
+                this.showInfo('Conversation cleared');
             }
             
             updateStatus(state, message) {
