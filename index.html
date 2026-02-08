@@ -417,33 +417,45 @@
             
             async initializePuter() {
                 try {
-                    // Wait for puter object to be available
-                    if (typeof puter === 'undefined') {
-                        this.showError('Puter.js not loaded. Please refresh the page.');
-                        return;
+                    this.showInfo('Initializing AI...');
+                    console.log('Puter object available:', typeof puter !== 'undefined');
+                    
+                    // Try different model names that Puter might support
+                    const modelNames = [
+                        'claude-haiku',
+                        'haiku',
+                        'claude-3-5-haiku-20241022',
+                        'gpt-4o-mini'  // Fallback to GPT if Claude isn't available
+                    ];
+                    
+                    let lastError = null;
+                    
+                    for (const modelName of modelNames) {
+                        try {
+                            console.log(`Trying model: ${modelName}`);
+                            this.chatInstance = await puter.ai.chat(modelName);
+                            this.showInfo(`Voice Assistant ready! Using ${modelName}. Click "Start Listening" to begin.`);
+                            console.log(`Puter initialized successfully with model: ${modelName}`);
+                            return; // Success!
+                        } catch (error) {
+                            console.log(`Model ${modelName} failed:`, error.message);
+                            lastError = error;
+                            continue; // Try next model
+                        }
                     }
                     
-                    this.showInfo('Initializing AI...');
-                    
-                    // Try to create chat instance directly
-                    // Puter AI should work without explicit authentication
-                    this.chatInstance = await puter.ai.chat('claude-haiku-4-5-20251001');
-                    
-                    this.showInfo('Voice Assistant ready! Click "Start Listening" to begin.');
-                    console.log('Puter initialized successfully');
+                    // If we get here, all models failed
+                    throw lastError || new Error('All models failed to initialize');
                     
                 } catch (error) {
                     console.error('Puter initialization error:', error);
+                    console.error('Error details:', JSON.stringify(error, null, 2));
                     
                     // Show sign-in button if authentication seems to be the issue
                     this.signinSection.style.display = 'block';
                     
-                    // If it fails, provide helpful error message
-                    if (error.message && error.message.includes('auth')) {
-                        this.showError('Authentication required. Please click "Sign In to Puter" button above.');
-                    } else {
-                        this.showError('Failed to initialize AI: ' + error.message + '. Try signing in with the button above.');
-                    }
+                    // Provide helpful error message
+                    this.showError('Failed to initialize AI: ' + error.message + '. Try signing in with the button above.');
                 }
             }
             
@@ -585,8 +597,19 @@
                 
                 // Reset chat instance to clear conversation context
                 try {
-                    if (typeof puter !== 'undefined') {
-                        this.chatInstance = await puter.ai.chat('claude-haiku-4-5-20251001');
+                    if (typeof puter !== 'undefined' && this.chatInstance) {
+                        // Try to recreate with the same model
+                        const modelNames = ['claude-haiku', 'haiku', 'claude-3-5-haiku-20241022', 'gpt-4o-mini'];
+                        
+                        for (const modelName of modelNames) {
+                            try {
+                                this.chatInstance = await puter.ai.chat(modelName);
+                                this.showInfo('Conversation cleared');
+                                return;
+                            } catch (error) {
+                                continue;
+                            }
+                        }
                     }
                     this.showInfo('Conversation cleared');
                 } catch (error) {
@@ -618,8 +641,25 @@
             }
         }
         
-        // Initialize the voice assistant when the page loads
-        window.addEventListener('load', () => {
+        // Wait for Puter SDK to load before initializing
+        async function waitForPuter() {
+            return new Promise((resolve) => {
+                if (typeof puter !== 'undefined') {
+                    resolve();
+                } else {
+                    const checkInterval = setInterval(() => {
+                        if (typeof puter !== 'undefined') {
+                            clearInterval(checkInterval);
+                            resolve();
+                        }
+                    }, 100);
+                }
+            });
+        }
+        
+        // Initialize the voice assistant when both page and Puter are ready
+        window.addEventListener('load', async () => {
+            await waitForPuter();
             new VoiceAssistant();
         });
     </script>
